@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>iure-go — intro</title>
+<style>
+  :root {
+    --bg: #060504;
+    --stage: #0e0b09;
+    --orange: #188f00;
+    --orange-line: #45cf57;
+    --word: #cdcdcd;
+    --tag: #6f655e;
+    --glyph: #140b06;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: var(--bg); }
+  body { display: grid; place-items: center; overflow: hidden; }
+  #stage {
+    width: min(100vw, 100vh, 900px);
+    aspect-ratio: 1 / 1;
+    background: var(--stage);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  svg { display: block; width: 100%; height: 100%; }
+  text { font-family: Inter, "SF Pro Display", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+  .word { font-weight: 700; font-size: 56px; letter-spacing: -1.2px; }
+  .tag  { font-weight: 500; font-size: 15.5px; letter-spacing: 4.6px; fill: var(--tag); }
+  #hex-wrap { filter: drop-shadow(0 0 10px rgba(18, 177, 13, 0.35)); }
+</style>
+</head>
+<body>
+<div id="stage" title="Clique para repetir">
+  <svg id="svg" viewBox="0 0 720 720" role="img" aria-label="Logo iure-: Conectando pessoas e sistemas.">
+    <defs>
+      <radialGradient id="glow" cx="360" cy="292" r="330" gradientUnits="userSpaceOnUse">
+        <stop offset="0"   stop-color="#188f00" stop-opacity=".30"/>
+        <stop offset=".45" stop-color="#0d4f00" stop-opacity=".12"/>
+        <stop offset="1"   stop-color="#000"    stop-opacity="0"/>
+      </radialGradient>
+      <filter id="blur" x="-200%" y="-200%" width="500%" height="500%">
+        <feGaussianBlur stdDeviation="5"/>
+      </filter>
+    </defs>
+
+    <g id="all">
+      <circle id="bg-glow" cx="360" cy="292" r="330" fill="url(#glow)" opacity="0"/>
+
+      <g id="hex-wrap" transform="translate(-3 0)">
+          <path id="hex" d="M363 207 L437 249.5 L437 334.5 L363 377 L289 334.5 L289 249.5 Z"
+            pathLength="100" fill="#188f00" fill-opacity="0" stroke="#45cf57" stroke-width="3.2"
+              stroke-linejoin="round" stroke-dasharray="100" stroke-dashoffset="100"/>
+        <g fill="none" stroke="#140b06" stroke-width="8.5" stroke-linecap="round" stroke-linejoin="round">
+          <path id="g1" d="M336 263 L312 291 L336 319" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/>
+          <path id="g2" d="M390 263 L414 291 L390 319" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/>
+          <path id="g3" d="M377 257 L350 326"          pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/>
+        </g>
+      </g>
+
+      <text id="word" class="word" x="360" y="490" text-anchor="middle" opacity="0">
+        <tspan fill="#cdcdcd">iure</tspan><tspan fill="#188f00">-go</tspan>
+      </text>
+      <text id="tag" class="tag" x="360" y="546" text-anchor="middle" opacity="0">Conectando pessoas e sistemas.</text>
+
+      <g id="trail" stroke="#45cf57" stroke-linecap="round"></g>
+      <circle id="halo"  r="9"   fill="#45cf57" filter="url(#blur)" opacity="0"/>
+      <circle id="spark" r="3.6" fill="#d9ffd5" opacity="0"/>
+    </g>
+  </svg>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  /* ---------- Configuração ---------- */
+  const SPEED = 1;        // 1 = velocidade do vídeo original; <1 mais lento
+  const LOOP  = true;     // repetir a animação
+  const HOLD_END = 2.9;   // (s) quando começa o fade-out final
+  const CYCLE = 3.5;      // (s) duração total de cada ciclo
+  const CX = 360, CY = 292;          // centro do hexágono
+  const A0 = 132 * Math.PI / 180;    // ângulo inicial da faísca
+  const SWEEP = 330 * Math.PI / 180; // varredura da órbita
+  const ORBIT_END = 0.8;             // (s) fim da órbita
+  const TRAIL_N = 16, TRAIL_DT = 0.012;
+
+  /* ---------- Utilitários ---------- */
+  const $ = id => document.getElementById(id);
+  const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+  const seg = (t, a, b) => clamp((t - a) / (b - a));
+  const easeOut = x => 1 - Math.pow(1 - x, 3);
+  const easeIO  = x => -(Math.cos(Math.PI * x) - 1) / 2;
+  const NS = 'http://www.w3.org/2000/svg';
+
+  const el = {
+    all: $('all'), glow: $('bg-glow'), hex: $('hex'),
+    g1: $('g1'), g2: $('g2'), g3: $('g3'),
+    word: $('word'), tag: $('tag'),
+    trail: $('trail'), halo: $('halo'), spark: $('spark')
+  };
+
+  const lines = [];
+  for (let i = 0; i < TRAIL_N; i++) {
+    const l = document.createElementNS(NS, 'line');
+    l.setAttribute('opacity', 0);
+    el.trail.appendChild(l);
+    lines.push(l);
+  }
+
+  /* ---------- Trajetória da faísca ---------- */
+  const orbit = u => {
+    const e = easeIO(u);
+    const a = A0 + SWEEP * e, r = 105 + 38 * e;
+    return [CX + r * Math.cos(a), CY + r * Math.sin(a)];
+  };
+  const P0 = orbit(1), P2 = [270, 432], PC = [352, 470];
+  const swoop = u => {
+    const e = easeOut(u), k = 1 - e;
+    return [
+      k * k * P0[0] + 2 * k * e * PC[0] + e * e * P2[0],
+      k * k * P0[1] + 2 * k * e * PC[1] + e * e * P2[1]
+    ];
+  };
+  const SWOOP_END = ORBIT_END + 0.4;
+  const sparkPos = tau => {
+    if (tau < 0 || tau > SWOOP_END) return null;
+    return tau <= ORBIT_END ? orbit(tau / ORBIT_END) : swoop((tau - ORBIT_END) / (SWOOP_END - ORBIT_END));
+  };
+  const sparkVis = tau => seg(tau, 0, 0.08) * (1 - seg(tau, 1.0, SWOOP_END));
+
+  /* ---------- Renderização pura: estado = f(t) ---------- */
+  function render(t) {
+    // brilho de fundo (com leve pulso ao concluir)
+    const pulse = t > 1.05 ? Math.exp(-(t - 1.05) * 3.5) * 0.35 : 0;
+    el.glow.setAttribute('opacity', (easeOut(seg(t, 0, 1.0)) + pulse).toFixed(3));
+
+    // hexágono: contorno desenhado → preenchimento
+    el.hex.setAttribute('stroke-dashoffset', (100 * (1 - easeOut(seg(t, 0.08, 0.95)))).toFixed(2));
+    el.hex.setAttribute('fill-opacity', easeOut(seg(t, 0.55, 1.0)).toFixed(3));
+
+    // símbolo </>
+    el.g1.setAttribute('stroke-dashoffset', (100 * (1 - easeOut(seg(t, 0.72, 0.92)))).toFixed(2));
+    el.g2.setAttribute('stroke-dashoffset', (100 * (1 - easeOut(seg(t, 0.78, 0.98)))).toFixed(2));
+    el.g3.setAttribute('stroke-dashoffset', (100 * (1 - easeOut(seg(t, 0.84, 1.06)))).toFixed(2));
+
+    // wordmark e tagline
+    const w = easeOut(seg(t, 0.35, 0.85));
+    el.word.setAttribute('opacity', w.toFixed(3));
+    el.word.setAttribute('transform', `translate(0 ${((1 - w) * 8).toFixed(2)})`);
+    const g = easeOut(seg(t, 0.75, 1.2));
+    el.tag.setAttribute('opacity', g.toFixed(3));
+    el.tag.setAttribute('transform', `translate(0 ${((1 - g) * 6).toFixed(2)})`);
+
+    // faísca + cauda
+    const p = sparkPos(t), vis = sparkVis(t);
+    if (p && vis > 0) {
+      el.spark.setAttribute('cx', p[0]); el.spark.setAttribute('cy', p[1]);
+      el.halo.setAttribute('cx', p[0]);  el.halo.setAttribute('cy', p[1]);
+      el.spark.setAttribute('opacity', vis.toFixed(3));
+      el.halo.setAttribute('opacity', (vis * 0.75).toFixed(3));
+    } else {
+      el.spark.setAttribute('opacity', 0);
+      el.halo.setAttribute('opacity', 0);
+    }
+    for (let i = 0; i < TRAIL_N; i++) {
+      const a = sparkPos(t - i * TRAIL_DT), b = sparkPos(t - (i + 1) * TRAIL_DT), l = lines[i];
+      if (!a || !b || vis <= 0) { l.setAttribute('opacity', 0); continue; }
+      const f = 1 - i / TRAIL_N;
+      l.setAttribute('x1', a[0]); l.setAttribute('y1', a[1]);
+      l.setAttribute('x2', b[0]); l.setAttribute('y2', b[1]);
+      l.setAttribute('stroke-width', (0.5 + 2.4 * f).toFixed(2));
+      l.setAttribute('opacity', (0.85 * f * vis).toFixed(3));
+    }
+
+    // fade-out final (para o loop)
+    el.all.setAttribute('opacity', LOOP ? (1 - seg(t, HOLD_END, CYCLE - 0.15)).toFixed(3) : 1);
+  }
+
+  /* ---------- Laço de animação ---------- */
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let start = performance.now(), raf = 0;
+
+  function frame(now) {
+    const elapsed = ((now - start) / 1000) * SPEED;
+    const t = LOOP ? elapsed % CYCLE : Math.min(elapsed, HOLD_END);
+    render(t);
+    if (LOOP || elapsed < HOLD_END) raf = requestAnimationFrame(frame);
+  }
+  function play() {
+    cancelAnimationFrame(raf);
+    start = performance.now();
+    raf = requestAnimationFrame(frame);
+  }
+
+  if (reduce) {
+    // Sem movimento: mostra o estado final estático
+    el.all.setAttribute('opacity', 1);
+    render(2.0);
+    el.all.setAttribute('opacity', 1);
+  } else {
+    play();
+    $('stage').addEventListener('click', play);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) play(); });
+  }
+})();
+</script>
+</body>
+</html>
