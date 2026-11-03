@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>iure-go — intro</title>
+
+<!--
+  =====================================================================
+  GUIA RÁPIDO: ONDE MEXER
+  =====================================================================
+  COISA QUE VOCÊ QUER MUDAR                    ONDE ESTÁ
+  _____________________________________________________________________
+  Cor de fundo da página                       CSS  → :root (variável bg)
+  Cores do fundo da animação                   SVG  → <linearGradient id="bgGrad">
+  Cores da logo (hexágono, I, O...)            SVG  → gradientes gHex, gLeft, gBar, gO
+  Cor do verde dos chevrons e chaves           SVG  → stroke / fill #62ee3e
+  Texto "iure-go" (cores, tamanho, posição)    CSS (.word) + SVG (<text id="word">)
+  Subtítulo                                    CSS (.sub)  + SVG (<text id="sub">)
+  Velocidade, loop, duração                    JS   → bloco "Configuração"
+  Quando cada elemento aparece                 JS   → função render() (números em segundos)
+  Raio e voltas do feixe de luz                JS   → orbitPos() e constantes A0 / SWEEP
+  Quantidade de partículas                     JS   → bloco "Partículas" (i < 56)
+
+  Dica: os tempos em render() estão em SEGUNDOS desde o início do ciclo.
+  seg(t, 1.0, 1.5) significa "vai de 0 a 1 entre 1,0 s e 1,5 s".
+  =====================================================================
+-->
+
+<style>
+  /* Variáveis de cor (só --bg é usada no CSS; as demais ficam de referência da paleta) */
+  :root {
+    --bg: #0b0d10;      /* fundo da página, atrás da animação */
+    --cyan: #18e6f2;    /* ciano */
+    --blue: #12b8f5;    /* azul */
+    --green: #62ee3e;   /* verde */
+  }
+
+  /* Reset básico */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: var(--bg); }
+
+  /* Centraliza a animação na tela */
+  body { display: grid; place-items: center; overflow: hidden; }
+
+  /* Caixa da animação: mantém a proporção 896x1200 (retrato) e cabe em qualquer tela.
+     820px é a largura máxima; aumente se quiser maior em telas grandes. */
+  #stage {
+    width: min(100vw, calc(100vh * 896 / 1200), 820px);
+    aspect-ratio: 896 / 1200;
+    cursor: pointer;                              /* clicar reinicia a animação */
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* O SVG ocupa toda a caixa e escala sozinho */
+  svg { display: block; width: 100%; height: 100%; }
+
+  /* Fonte monoespaçada das chaves pequenas { } */
+  .mono { font-family: "SF Mono", Menlo, Consolas, "Courier New", monospace; font-weight: 700; }
+
+  /* Fonte do título e do subtítulo (a primeira disponível no dispositivo é usada) */
+  .word, .sub {
+    font-family: "Segoe UI", "Open Sans", Inter, "SF Pro Display", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  /* Título "iure-go": tamanho e cor base (as cores de "iure" e "-go" ficam no SVG) */
+  .word { font-weight: 700; font-size: 116px; fill: #d4d4d4; }
+  /* Subtítulo "Conectando pessoas e sistemas." */
+  .sub  { font-weight: 400; font-size: 30px; fill: #857a72; }
+
+  /* Brilho ciano em volta da logo (blur de 12px, 38% de opacidade) */
+  #logo { filter: drop-shadow(0 0 12px rgba(24, 230, 245, .42)); }
+</style>
+</head>
+<body>
+<div id="stage" title="Clique para repetir">
+  <!-- O desenho inteiro vive neste SVG. O sistema de coordenadas (viewBox) é 896 de largura por 1200 de altura:
+       todos os números x/y abaixo estão nessa escala, não em pixels da tela. -->
+  <svg id="svg" viewBox="0 0 896 1200" role="img" aria-label="Logo iure-go">
+
+    <!-- ===== DEFINIÇÕES: gradientes e filtros reutilizados abaixo ===== -->
+    <defs>
+      <clipPath id="chevronLeftStraightEnds" clipPathUnits="userSpaceOnUse">
+        <rect x="240" y="450" width="73" height="140"/>
+      </clipPath>
+      <clipPath id="chevronMiddleStraightEnds" clipPathUnits="userSpaceOnUse">
+        <rect x="354" y="450" width="70" height="140"/>
+      </clipPath>
+      <clipPath id="chevronStraightEnds" clipPathUnits="userSpaceOnUse">
+        <rect x="607" y="450" width="117" height="140"/>
+      </clipPath>
+      <!-- Cortes paralelos aos braços do chevron, com folga uniforme. -->
+      <clipPath id="hexUpperCut" clipPathUnits="userSpaceOnUse">
+        <polygon points="0,0 896,0 896,682 0,-3.17647"/>
+      </clipPath>
+      <clipPath id="hexLowerCut" clipPathUnits="userSpaceOnUse">
+        <polygon points="0,1043.17647 896,358 896,1200 0,1200"/>
+      </clipPath>
+      <!-- Fundo: degradê vertical (topo → base) -->
+      <linearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#2b3139"/><stop offset="1" stop-color="#171b21"/>
+      </linearGradient>
+
+      <!-- Brilho central atrás da logo (centro em 448,520; raio 420) -->
+      <radialGradient id="glow" cx="448" cy="520" r="420" gradientUnits="userSpaceOnUse">
+        <stop offset="0"   stop-color="#14c8ff" stop-opacity=".30"/>
+        <stop offset=".5"  stop-color="#12a0d8" stop-opacity=".10"/>
+        <stop offset="1"   stop-color="#000"    stop-opacity="0"/>
+      </radialGradient>
+
+      <!-- Cores do contorno do hexágono (diagonal, do canto superior esquerdo ao inferior direito) -->
+      <linearGradient id="gHex" gradientUnits="userSpaceOnUse" x1="270" y1="300" x2="650" y2="650">
+        <stop offset="0" stop-color="#42f58b"/><stop offset=".5" stop-color="#32f397"/><stop offset="1" stop-color="#12eab6"/>
+      </linearGradient>
+      <!-- Cores da chave "{" da esquerda -->
+      <linearGradient id="gLeft" gradientUnits="userSpaceOnUse" x1="250" y1="390" x2="250" y2="650">
+        <stop offset="0" stop-color="#15dbf2"/><stop offset="1" stop-color="#0bc6f2"/>
+      </linearGradient>
+      <!-- Cores da barra "I" -->
+      <linearGradient id="gBar" gradientUnits="userSpaceOnUse" x1="0" y1="420" x2="0" y2="690">
+        <stop offset="0" stop-color="#18e6f2"/><stop offset="1" stop-color="#12b0f5"/>
+      </linearGradient>
+      <!-- Cores do anel "O" -->
+      <linearGradient id="gO" gradientUnits="userSpaceOnUse" x1="440" y1="420" x2="590" y2="630">
+        <stop offset="0" stop-color="#1af0f2"/><stop offset="1" stop-color="#14c4f5"/>
+      </linearGradient>
+
+      <!-- Cores dos chevrons < < >: verde claro (brilho) no canto superior esquerdo → verde mais forte embaixo à direita -->
+      <linearGradient id="gChev" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#9bff6a"/><stop offset=".55" stop-color="#55ee45"/><stop offset="1" stop-color="#2fd23c"/>
+      </linearGradient>
+
+      <!-- Desfoque usado no halo da faísca (stdDeviation = intensidade do desfoque) -->
+      <filter id="blur" x="-300%" y="-300%" width="700%" height="700%"><feGaussianBlur stdDeviation="6"/></filter>
+    </defs>
+
+    <!-- ===== FUNDO ===== -->
+    <rect width="896" height="1200" fill="url(#bgGrad)"/>
+    <!-- Brilho central: sua opacidade é animada pelo JS (começa em 0) -->
+    <circle id="glowC" cx="448" cy="520" r="420" fill="url(#glow)" opacity="0"/>
+
+    <!-- Riscos diagonais decorativos nos cantos (stA = canto superior direito, stB = inferior esquerdo).
+         Cada linha é x1,y1 → x2,y2. Eles deslizam para dentro durante a animação. -->
+    <g id="streaks" stroke="#6fb8d8" stroke-width="1.2" opacity="0">
+      <g id="stA"><line x1="800" y1="330" x2="896" y2="230"/><line x1="770" y1="300" x2="896" y2="170"/><line x1="830" y1="360" x2="896" y2="290"/></g>
+      <g id="stB"><line x1="0" y1="950" x2="120" y2="820"/><line x1="0" y1="1000" x2="160" y2="830"/><line x1="40" y1="1030" x2="170" y2="900"/><line x1="40" y1="1180" x2="200" y2="1030"/></g>
+    </g>
+
+    <!-- Partículas: os círculos são criados pelo JS e inseridos aqui -->
+    <g id="particles"></g>
+
+    <!-- ===== A LOGO ===== -->
+    <g id="logo">
+      <!-- Contorno do hexágono (lado direito, em duas partes com uma abertura onde fica o ">")
+           e a chave "{" do lado esquerdo.
+           A chave "{" (path id="l") tem cantos VIVOS (stroke-linejoin="miter"), traço mais grosso
+           (stroke-width="24") e braços a 45°. Pontos, de baixo para cima: ponta de baixo, canto,
+           início do entalhe, PONTA DO ENTALHE (o ponto mais à esquerda), fim do entalhe, canto, ponta de cima.
+           As linhas são RETAS (comandos L); só os cantos são curvos (comandos Q).
+           Cada canto tem a forma:  L [início da curva]  Q [vértice] [fim da curva].
+           Para deixar um canto mais ou menos arredondado, afaste ou aproxime os dois
+           pontos de curva do vértice. Para pontas arredondadas, troque stroke-linecap
+           de "butt" (corte reto) para "round" no grupo abaixo.
+           r1 / r2 / l são "traçados": o JS os revela aos poucos com stroke-dashoffset.
+           Se mudar o formato (atributo d), a faísca e o desenho se ajustam sozinhos. -->
+      <g fill="none" stroke-linecap="butt" stroke-linejoin="round" stroke-width="22">
+        <path id="r1" stroke="url(#gHex)" stroke-width="26" d="M405 318 L437 300 Q448 294 459 300 L631 399 Q643 406 643 420 L643 466"/>
+        <path id="r2" stroke="url(#gHex)" stroke-width="26" d="M643 574 L643 620 Q643 634 631 641 L459 740 Q448 746 437 740 L405 722"/>
+        <path id="l" stroke="url(#gLeft)" stroke-width="27" stroke-linejoin="round"
+              d="M287.5 659.5 L253 626.3 L253 552 L216 520 L253 488 L253 413.7 L287.5 380.5"/>
+      </g>
+
+      <!-- Pontas preenchidas: cortes diagonais paralelos ao chevron. -->
+      <path id="hexTipTop" fill="url(#gHex)" d="M630 465 L656 465 L656 498.47 L630 478.59 Z" opacity="0"/>
+      <path id="hexTipBottom" fill="url(#gHex)" d="M630 561.41 L656 541.53 L656 575 L630 575 Z" opacity="0"/>
+
+      <!-- Barra "I" e anel "O".
+           pathLength="100" + dasharray/dashoffset = 100 faz o traço começar "apagado";
+           o JS reduz o dashoffset até 0 para desenhar. -->
+      <line id="bar" x1="352" y1="432" x2="352" y2="676" pathLength="100" stroke="url(#gBar)" stroke-width="30"
+            stroke-linecap="butt" stroke-dasharray="100" stroke-dashoffset="100"/>
+      <rect id="ring" x="447.5" y="427.5" width="135" height="190" rx="67.5" pathLength="100" fill="none"
+            stroke="url(#gO)" stroke-width="35" stroke-dasharray="100" stroke-dashoffset="100"/>
+
+      <!-- Os três chevrons: "<" esquerdo, "<" do meio e ">" da direita.
+           Estilo: traço grosso (stroke-width), ponta bem afiada (stroke-linejoin="miter";
+           aumente stroke-miterlimit se a ponta ficar cortada), extremidades em corte reto
+           (stroke-linecap="butt") e cor em degradê (gChev, no início do arquivo).
+           Para mudar tamanho/ângulo, edite os pontos de cada path: M ponta-de-cima L vértice L ponta-de-baixo. -->
+      <g fill="none" stroke="url(#gChev)" stroke-width="15" stroke-linecap="butt" stroke-linejoin="miter" stroke-miterlimit="10">
+        <path id="c1" stroke-width="19" stroke-linejoin="round" clip-path="url(#chevronLeftStraightEnds)" d="M323 473.35294 L262 520 L323 566.64706" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/>
+        <path id="c2" stroke-linejoin="round" clip-path="url(#chevronMiddleStraightEnds)" d="M434 486.35294 L390 520 L434 553.64706" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/>
+        <!-- Braços prolongados e recortados em x=624: extremidades verticais. -->
+        <path id="c3" stroke-width="17" clip-path="url(#chevronStraightEnds)" stroke-linejoin="round" d="M597 473.35294 L658 520 L597 566.64706" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/>
+      </g>
+
+      <!-- Chaves pequenas acima e abaixo da barra "I" (aparecem com fade) -->
+      <g id="braceTop" opacity="0">
+        <text class="mono" x="323" y="388" font-size="58" fill="#62ee3e" text-anchor="middle">{</text>
+        <text class="mono" x="380" y="388" font-size="58" fill="#62ee3e" text-anchor="middle">}</text>
+        <text class="mono" x="352" y="386" font-size="46" fill="#18e6f2" text-anchor="middle">I</text>
+      </g>
+      <g id="braceBot" opacity="0">
+        <text class="mono" x="312" y="695" font-size="62" fill="#78f35c" text-anchor="middle">{</text>
+        <text class="mono" x="392" y="695" font-size="62" fill="#78f35c" text-anchor="middle">}</text>
+      </g>
+
+      <!-- Linhas de código decorativas: criadas pelo JS a partir da lista DASH_DATA -->
+      <g id="dashes" stroke-width="6" stroke-linecap="round" fill="none"></g>
+    </g>
+
+    <!-- ===== TEXTOS =====
+         x/y = posição (x é o início do texto, y é a linha de base).
+         textLength força a largura total do texto, por isso ele fica parecido em qualquer fonte.
+         Para mudar as cores, edite o fill de cada tspan. -->
+    <text id="word" class="word" x="248" y="876" textLength="400" lengthAdjust="spacing" opacity="0"><tspan fill="#d4d4d4">iure</tspan><tspan fill="#1a9b00">-go</tspan></text>
+    <text id="sub" class="sub" x="68" y="962" textLength="760" lengthAdjust="spacing" opacity="0">Conectando pessoas e sistemas.</text>
+
+    <!-- ===== FEIXE DE LUZ (fica por cima de tudo) =====
+         trail = cauda (várias linhas criadas pelo JS), halo = brilho desfocado, spark = ponto brilhante -->
+    <g id="trail" stroke="#3ae6ff" stroke-linecap="round"></g>
+    <circle id="halo"  r="11" fill="#4df0ff" filter="url(#blur)" opacity="0"/>
+    <circle id="spark" r="4.2" fill="#eafffd" opacity="0"/>
+  </svg>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  /* =====================================================================
+     1) CONFIGURAÇÃO: o que você mais vai querer ajustar
+     ===================================================================== */
+  const SPEED = 1;       // velocidade geral: 1 = normal, 0.5 = metade da velocidade, 2 = dobro
+  const LOOP  = true;    // true = repete para sempre; false = toca uma vez e fica na logo final
+  const CYCLE = 5.4;     // (s) duração de cada ciclo completo, contando o fade-out final
+  const FADE_AT = 4.8;   // (s) momento em que começa o fade-out antes de reiniciar
+
+  // Tempos do feixe de luz (em segundos):
+  //   ORBIT_START → começa a circular | ORBIT_END → termina a volta | SWOOP_END → chega ao texto e some
+  const ORBIT_START = 0.05, ORBIT_END = 1.5, SWOOP_END = 1.95;
+
+  // Cauda do feixe: TRAIL_N = nº de segmentos (maior = cauda mais suave),
+  // TRAIL_DT = intervalo de tempo entre segmentos (maior = cauda mais longa)
+  const TRAIL_N = 18, TRAIL_DT = 0.012;
+
+  // Para onde o feixe vai depois de circular (início do texto "iure-go")
+  const WORD_START = [248, 880];
+
+  /* =====================================================================
+     2) UTILITÁRIOS: funções pequenas usadas em todo o código
+     ===================================================================== */
+  const NS = 'http://www.w3.org/2000/svg';            // namespace para criar elementos SVG
+  const $ = id => document.getElementById(id);         // atalho para buscar elemento por id
+  const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v)); // limita v entre a e b
+
+  // seg(t, a, b): converte o tempo t em progresso de 0 a 1 entre os instantes a e b.
+  //   Antes de a → 0 | depois de b → 1 | no meio → valor proporcional.
+  const seg = (t, a, b) => clamp((t - a) / (b - a));
+
+  // Curvas de suavização (recebem 0..1 e devolvem 0..1):
+  const easeOut = x => 1 - Math.pow(1 - x, 3);                      // começa rápido, termina devagar
+  const easeIO = x => -(Math.cos(Math.PI * x) - 1) / 2;              // começa e termina devagar
+
+  const set = (e, k, v) => e.setAttribute(k, v);       // atalho para alterar atributos SVG
+
+  // Referências a todos os elementos que serão animados
+  const el = {
+    glow: $('glowC'), streaks: $('streaks'), stA: $('stA'), stB: $('stB'),
+    r1: $('r1'), r2: $('r2'), l: $('l'),
+    bar: $('bar'), ring: $('ring'), c1: $('c1'), c2: $('c2'), c3: $('c3'),
+    bt: $('braceTop'), bb: $('braceBot'), word: $('word'), sub: $('sub'),
+    trail: $('trail'), halo: $('halo'), spark: $('spark'),
+    stage: $('svg'), particles: $('particles'), dashes: $('dashes'), logo: $('logo')
+  };
+
+  /* =====================================================================
+     3) LINHAS DE CÓDIGO decorativas (efeito "digitando")
+        Cada item: [x1, y1, x2, y2, cor, instante em que começa a aparecer (s)]
+        Para adicionar uma linha, basta incluir mais um item na lista.
+     ===================================================================== */
+  const DASH_DATA = [
+    [426, 351, 450, 351, '#12b8d8', 1.55],
+    [440, 369, 464, 369, '#12b8d8', 1.62],
+    [485, 369, 486, 369, '#78f35c', 1.66],
+    [506, 369, 535, 369, '#78f35c', 1.70],
+    [440, 386, 490, 386, '#78f35c', 1.74],
+    [440, 403, 464, 403, '#12b8d8', 1.78],
+    [428, 420, 429, 420, '#18d9d4', 1.82],
+    [390, 438, 418, 438, '#12b8d8', 1.86],
+    [394, 626, 422, 626, '#12b8f5', 1.62],
+    [404, 639, 444, 639, '#62ee3e', 1.70],
+    [422, 652, 458, 652, '#18e6f2', 1.78],
+    [472, 663, 473, 663, '#62ee3e', 1.86],
+    [490, 663, 491, 663, '#62ee3e', 1.90]
+  ];
+  // Cria um <line> SVG para cada item da lista e começa "apagado" (dashoffset = 100)
+  const dashEls = DASH_DATA.map(d => {
+    const n = document.createElementNS(NS, 'line');
+    set(n, 'x1', d[0]); set(n, 'y1', d[1]); set(n, 'x2', d[2]); set(n, 'y2', d[3]);
+    set(n, 'stroke', d[4]); set(n, 'stroke-width', d[1] < 500 ? (d[2] - d[0] <= 1 ? 10 : 8) : 6); set(n, 'pathLength', 100);
+    set(n, 'stroke-dasharray', 100); set(n, 'stroke-dashoffset', 100);
+    el.dashes.appendChild(n);
+    return n;
+  });
+
+  /* =====================================================================
+     4) PARTÍCULAS
+        Usa um gerador de números aleatórios com "semente" (2024): assim as
+        partículas ficam sempre nas mesmas posições a cada carregamento.
+        Troque o 2024 por outro número para obter outra distribuição.
+     ===================================================================== */
+  function mulberry32(a) {
+    // Gerador pseudoaleatório pequeno e rápido (não precisa mexer)
+    return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  }
+  const rnd = mulberry32(2024);
+  // Número aleatório com distribuição "em sino" (a maioria perto de 0)
+  const gauss = () => (rnd() + rnd() + rnd() + rnd() - 2) * 1.2;
+  const parts = [];
+  for (let i = 0; i < 56; i++) {                     // 56 = quantidade de partículas
+    const near = rnd() < 0.7;                         // 70% concentradas perto da logo, 30% espalhadas
+    const x = near ? 448 + gauss() * 230 : 40 + rnd() * 816;
+    const y = near ? 520 + gauss() * 260 : 80 + rnd() * 1040;
+    const c = document.createElementNS(NS, 'circle');
+    const r = 0.9 + rnd() * 2.3;                      // raio de cada partícula (0,9 a 3,2)
+    set(c, 'r', r.toFixed(2));
+    set(c, 'fill', rnd() < 0.18 ? '#62ee3e' : '#29e3f5'); // 18% verdes, o resto ciano
+    set(c, 'opacity', 0);
+    el.particles.appendChild(c);
+    parts.push({
+      c, x, y,
+      base: 0.35 + rnd() * 0.65,   // brilho máximo
+      ph: rnd() * 6.28,            // fase do cintilar (para não piscarem juntas)
+      sp: 0.8 + rnd() * 1.8,       // velocidade do cintilar
+      vy: 2 + rnd() * 6,           // velocidade de subida (px por segundo)
+      delay: 0.2 + rnd() * 1.4     // atraso até aparecer
+    });
+  }
+
+  /* =====================================================================
+     5) GEOMETRIA DO DESENHO DOS CONTORNOS
+        O contorno é desenhado "seguindo" uma rota: r1 → abertura → r2 → abertura → l.
+        Medimos o comprimento real de cada traço para revelar cada um na hora certa.
+     ===================================================================== */
+  const paths = [el.r1, el.r2, el.l];
+  const lens = paths.map(p => p.getTotalLength());   // comprimento de cada traço
+  // Faz o traço ficar totalmente "escondido" no início (dash = comprimento total)
+  paths.forEach((p, i) => set(p, 'stroke-dasharray', lens[i] + ' ' + lens[i]));
+  // pt(p, d): coordenada [x, y] do ponto a uma distância d do início do traço p
+  const pt = (p, d) => { const q = p.getPointAtLength(d); return [q.x, q.y]; };
+  const dist = (a, b) => Math.hypot(b[0] - a[0], b[1] - a[1]);
+
+  // As "aberturas" são trechos sem desenho entre um traço e o próximo
+  const gap1 = [pt(el.r1, lens[0]), pt(el.r2, 0)];
+  const gap2 = [pt(el.r2, lens[1]), pt(el.l, 0)];
+  const route = [
+    { p: el.r1, len: lens[0], i: 0 },
+    { a: gap1[0], b: gap1[1], len: dist(gap1[0], gap1[1]) },
+    { p: el.r2, len: lens[1], i: 1 },
+    { a: gap2[0], b: gap2[1], len: dist(gap2[0], gap2[1]) },
+    { p: el.l, len: lens[2], i: 2 }
+  ];
+  // Calcula onde cada trecho começa e termina ao longo da rota completa
+  let acc = 0;
+  route.forEach(s => { s.start = acc; acc += s.len; s.end = acc; });
+  const TOTAL = acc;                                  // comprimento total da rota
+
+  /* =====================================================================
+     6) TRAJETÓRIA DO FEIXE DE LUZ
+        Fase 1 (orbit): circula a logo.  Fase 2 (swoop): desce em curva até o texto.
+     ===================================================================== */
+  const OC = [448, 520];                              // centro da órbita (centro da logo)
+  // A0 = ângulo inicial (-100° ≈ topo) | SWEEP = quanto gira no total (400° = 1 volta + 40°)
+  const A0 = -100 * Math.PI / 180, SWEEP = 400 * Math.PI / 180;
+
+  // orbitPos(u): posição [x, y] do feixe, com u de 0 (início) a 1 (fim da órbita)
+  //   raio = 305 - 18*e → começa com raio 305 e fecha até 287 (espiral leve).
+  //   Aumente 305 para o feixe passar mais longe da logo.
+  const orbitPos = u => {
+    const e = easeIO(u), a = A0 + SWEEP * e, r = 305 - 18 * e;
+    return [OC[0] + r * Math.cos(a), OC[1] + r * Math.sin(a)];
+  };
+  const END_PT = orbitPos(1);                         // ponto onde a órbita termina
+
+  // swoop(u): curva suave (Bézier) do fim da órbita até o início do texto.
+  //   swoopCtl é o "ponto de controle": mexa nele para mudar o arco da descida.
+  const swoopCtl = [140, 800];
+  const swoop = u => {
+    const e = easeOut(u), k = 1 - e;
+    return [
+      k * k * END_PT[0] + 2 * k * e * swoopCtl[0] + e * e * WORD_START[0],
+      k * k * END_PT[1] + 2 * k * e * swoopCtl[1] + e * e * WORD_START[1]
+    ];
+  };
+
+  // sparkPos(tau): onde o feixe está no instante tau (ou null se ainda não apareceu / já sumiu)
+  const sparkPos = tau => {
+    if (tau < ORBIT_START || tau > SWOOP_END) return null;
+    if (tau <= ORBIT_END) return orbitPos(seg(tau, ORBIT_START, ORBIT_END));
+    return swoop(seg(tau, ORBIT_END, SWOOP_END));
+  };
+  // sparkVis(tau): visibilidade do feixe (0 a 1): surge rápido no início e some no final da descida
+  const sparkVis = tau => seg(tau, ORBIT_START, ORBIT_START + 0.07) * (1 - seg(tau, 1.72, SWOOP_END));
+
+  // Cria os segmentos da cauda (linhas que ficam mais finas e transparentes para trás)
+  const trailLines = [];
+  for (let i = 0; i < TRAIL_N; i++) {
+    const l = document.createElementNS(NS, 'line');
+    set(l, 'opacity', 0);
+    el.trail.appendChild(l);
+    trailLines.push(l);
+  }
+
+  /* =====================================================================
+     7) RENDERIZAÇÃO: toda a linha do tempo da animação
+        render(t, abs) desenha o quadro exato do instante t (segundos desde o
+        início do ciclo). "abs" é um relógio contínuo, usado só nas partículas.
+        Para mudar QUANDO algo acontece, altere os números dentro de seg(t, início, fim).
+     ===================================================================== */
+  function render(t, abs) {
+    // --- Brilho de fundo: cresce até 1,3 s, dá um pulso após 1,7 s e depois "respira" ---
+    const pulse = t > 1.7 ? Math.exp(-(t - 1.7) * 2.8) * 0.4 : 0;
+    const breathe = t > 2.2 ? 0.07 * Math.sin((t - 2.2) * 2.2) : 0;
+    set(el.glow, 'opacity', clamp(easeOut(seg(t, 0, 1.3)) + pulse + breathe, 0, 1.4).toFixed(3));
+
+    // --- Riscos diagonais: surgem e deslizam 36 unidades até a posição final ---
+    set(el.streaks, 'opacity', (0.38 * easeOut(seg(t, 0.2, 1.4))).toFixed(3));
+    const sl = (1 - easeOut(seg(t, 0.2, 1.6))) * 36;
+    set(el.stA, 'transform', `translate(${sl.toFixed(1)} ${(-sl).toFixed(1)})`);
+    set(el.stB, 'transform', `translate(${(-sl).toFixed(1)} ${sl.toFixed(1)})`);
+
+    // --- Contornos (hexágono + chave): desenhados entre 0,2 s e 1,55 s ---
+    //     s = distância já "percorrida" na rota; cada traço mostra só a parte já percorrida.
+    const s = easeOut(seg(t, 0.2, 1.55)) * TOTAL;
+    set($('hexTipTop'), 'opacity', seg(s, lens[0] - 8, lens[0]));
+    const lowerStart = route.find(r => r.p === el.r2).start;
+    set($('hexTipBottom'), 'opacity', seg(s, lowerStart, lowerStart + 8));
+    route.forEach(r => {
+      if (!r.p) return;                                  // pula as aberturas (não têm desenho)
+      const prog = clamp((s - r.start) / (r.end - r.start));
+      set(r.p, 'stroke-dashoffset', (r.len * (1 - prog)).toFixed(2));
+    });
+
+    // --- Elementos internos: "I", "O" e chevrons são desenhados em sequência ---
+    //     (início, fim) em segundos. dashoffset 100 = apagado, 0 = completo.
+    set(el.bar,  'stroke-dashoffset', (100 * (1 - easeOut(seg(t, 0.95, 1.55)))).toFixed(2));
+    set(el.ring, 'stroke-dashoffset', (100 * (1 - easeOut(seg(t, 1.05, 1.8)))).toFixed(2));
+    set(el.c1, 'stroke-dashoffset', (100 * (1 - easeOut(seg(t, 1.20, 1.60)))).toFixed(2));
+    set(el.c2, 'stroke-dashoffset', (100 * (1 - easeOut(seg(t, 1.30, 1.70)))).toFixed(2));
+    set(el.c3, 'stroke-dashoffset', (100 * (1 - easeOut(seg(t, 1.40, 1.80)))).toFixed(2));
+
+    // --- Chaves pequenas: surgem com fade e deslizam 8 unidades (a de cima desce, a de baixo sobe) ---
+    const bt = easeOut(seg(t, 1.35, 1.8)), bb = easeOut(seg(t, 1.45, 1.9));
+    set(el.bt, 'opacity', bt.toFixed(3));
+    set(el.bt, 'transform', `translate(0 ${((1 - bt) * -8).toFixed(1)})`);
+    set(el.bb, 'opacity', bb.toFixed(3));
+    set(el.bb, 'transform', `translate(0 ${((1 - bb) * 8).toFixed(1)})`);
+
+    // --- Linhas de código: cada uma é desenhada em 0,22 s a partir do instante definido em DASH_DATA ---
+    dashEls.forEach((d, i) => {
+      set(d, 'stroke-dashoffset', (100 * (1 - easeOut(seg(t, DASH_DATA[i][5], DASH_DATA[i][5] + 0.22)))).toFixed(2));
+    });
+
+    // --- Texto "iure-go": fade-in com subida de 14 unidades entre 1,6 s e 2,3 s ---
+    const w = easeOut(seg(t, 1.6, 2.3));
+    set(el.word, 'opacity', w.toFixed(3));
+    set(el.word, 'transform', `translate(0 ${((1 - w) * 14).toFixed(2)})`);
+    // --- Subtítulo: entra logo depois, entre 2,0 s e 2,7 s ---
+    const sb = easeOut(seg(t, 2.0, 2.7));
+    set(el.sub, 'opacity', sb.toFixed(3));
+    set(el.sub, 'transform', `translate(0 ${((1 - sb) * 10).toFixed(2)})`);
+
+    // --- Feixe de luz: posiciona o ponto e o halo; se não estiver ativo, esconde ---
+    const p = sparkPos(t), vis = sparkVis(t);
+    if (p && vis > 0) {
+      set(el.spark, 'cx', p[0]); set(el.spark, 'cy', p[1]);
+      set(el.halo, 'cx', p[0]);  set(el.halo, 'cy', p[1]);
+      set(el.spark, 'opacity', vis.toFixed(3));
+      set(el.halo, 'opacity', (vis * 0.8).toFixed(3));
+    } else {
+      set(el.spark, 'opacity', 0); set(el.halo, 'opacity', 0);
+    }
+    // --- Cauda: cada segmento liga a posição do feixe em dois instantes um pouco anteriores.
+    //     Quanto mais "para trás" (i maior), mais fino (stroke-width) e transparente (opacity). ---
+    for (let i = 0; i < TRAIL_N; i++) {
+      const a = sparkPos(t - i * TRAIL_DT), b = sparkPos(t - (i + 1) * TRAIL_DT), l = trailLines[i];
+      if (!a || !b || vis <= 0) { set(l, 'opacity', 0); continue; }
+      const f = 1 - i / TRAIL_N;                         // 1 = perto do feixe, 0 = ponta da cauda
+      set(l, 'x1', a[0]); set(l, 'y1', a[1]); set(l, 'x2', b[0]); set(l, 'y2', b[1]);
+      set(l, 'stroke-width', (0.6 + 3.2 * f).toFixed(2));  // espessura: de 0,6 a 3,8
+      set(l, 'opacity', (0.85 * f * vis).toFixed(3));
+    }
+
+    // --- Partículas: aparecem após seu "delay", cintilam (seno ao quadrado) e sobem devagar.
+    //     Usam "abs" (tempo contínuo) para não reiniciarem junto com o ciclo. ---
+    parts.forEach(q => {
+      const env = easeOut(seg(t, q.delay, q.delay + 0.8));                       // fade-in individual
+      const tw = 0.35 + 0.65 * Math.pow(Math.sin(abs * q.sp + q.ph), 2);          // cintilar
+      const y = q.y - ((abs * q.vy) % 1200);                                      // subida contínua
+      set(q.c, 'cx', q.x.toFixed(1));
+      set(q.c, 'cy', (y < -20 ? y + 1240 : y).toFixed(1));                        // reaparece embaixo ao sair por cima
+      set(q.c, 'opacity', (q.base * tw * env).toFixed(3));
+    });
+
+    // --- Fade-out final: some entre FADE_AT e o fim do ciclo (só se LOOP = true) ---
+    const out = LOOP ? 1 - seg(t, FADE_AT, CYCLE - 0.15) : 1;
+    set(el.stage, 'opacity', out.toFixed(3));
+  }
+
+  /* =====================================================================
+     8) LAÇO DE ANIMAÇÃO (normalmente não precisa mexer)
+     ===================================================================== */
+  // Respeita a configuração do sistema "reduzir movimento" (acessibilidade)
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let start = performance.now(), raf = 0;
+
+  // Chamada a cada quadro (~60x por segundo): calcula o tempo e desenha
+  function frame(now) {
+    const elapsed = ((now - start) / 1000) * SPEED;                   // segundos desde o início
+    const t = LOOP ? elapsed % CYCLE : Math.min(elapsed, FADE_AT);    // com loop volta a 0 a cada CYCLE
+    render(t, now / 1000);
+    if (LOOP || elapsed < FADE_AT) raf = requestAnimationFrame(frame);
+  }
+  // (Re)inicia a animação do zero
+  function play() {
+    cancelAnimationFrame(raf);
+    start = performance.now();
+    raf = requestAnimationFrame(frame);
+  }
+
+  if (reduce) {
+    // Sem movimento: mostra só o estado final (t = 3 s), parado
+    render(3, 0);
+    set(el.stage, 'opacity', 1);
+  } else {
+    play();
+    $('stage').addEventListener('click', play);                       // clique reinicia
+    // Ao voltar para a aba, reinicia (evita saltos de tempo quando a aba ficou em segundo plano)
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) play(); });
+  }
+})();
+</script>
+</body>
+</html>
