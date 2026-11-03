@@ -1,2 +1,1 @@
-# solitary-hex
-Animação para carregamento de página.
+# Animação para carregamento de página.
